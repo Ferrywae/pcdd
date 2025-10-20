@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+results/
+data_test/
+pre-trained/
+*.pth
+*.pt
+.vscode/
+.DS_Store
+Thumbs.db

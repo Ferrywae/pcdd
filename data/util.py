@@ -6,13 +6,17 @@ import numpy as np
 import glob
 import torch
 import cv2
+import os.path as osp
 
 ####################
 # Files & IO
 ####################
 
 ###################### get image path list ######################
-IMG_EXTENSIONS = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP']
+IMG_EXTENSIONS = [
+    '.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG',
+    '.ppm', '.PPM', '.bmp', '.BMP', '.tif', '.tiff', '.TIF', '.TIFF'
+]
 
 
 def flip(x, dim):
@@ -85,7 +89,8 @@ def read_img(env, path, size=None):
     if env is None:  # img
         img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         if img is None:
-            print(path)
+            # fail fast supaya tidak kena AttributeError .astype
+            raise FileNotFoundError(f"Cannot read image: {path}")
         if size is not None:
             img = cv2.resize(img, (size[0], size[1]))
     else:
@@ -106,7 +111,7 @@ def read_img2(env, path, size=None):
     if env is None:  # img
         img = np.load(path)
         if img is None:
-            print(path)
+            raise FileNotFoundError(f"Cannot read image (np.load returned None): {path}")
         if size is not None:
             img = cv2.resize(img, (size[0], size[1]))
             # img = cv2.resize(img, size)
@@ -121,6 +126,21 @@ def read_img2(env, path, size=None):
     return img
 
 
+def _expand_dir_to_images(p):
+    """
+    Jika p adalah folder → kembalikan list file gambar di dalamnya (sorted).
+    Jika p adalah file → kembalikan [p].
+    """
+    if osp.isdir(p):
+        files = []
+        for root, _, fnames in os.walk(p):
+            for f in sorted(fnames):
+                if is_image_file(f):
+                    files.append(osp.join(root, f))
+        return sorted(files)
+    return [p]
+
+
 def read_img_seq(path, size=None):
     """Read a sequence of images from a given folder path
     Args:
@@ -129,11 +149,15 @@ def read_img_seq(path, size=None):
     Returns:
         imgs (Tensor): size (T, C, H, W), RGB, [0, 1]
     """
-    # print(path)
-    if type(path) is list:
-        img_path_l = path
+    if isinstance(path, list):
+        img_path_l = []
+        for p in path:
+            img_path_l += _expand_dir_to_images(p)
     else:
-        img_path_l = sorted(glob.glob(os.path.join(path, '*')))
+        img_path_l = _expand_dir_to_images(path)
+
+    if not img_path_l:
+        raise FileNotFoundError(f"No image files found for path: {path}")
 
     img_l = [read_img(None, v, size) for v in img_path_l]
     # stack to Torch tensor
@@ -154,11 +178,15 @@ def read_img_seq2(path, size=None):
     Returns:
         imgs (Tensor): size (T, C, H, W), RGB, [0, 1]
     """
-    # print(path)
-    if type(path) is list:
-        img_path_l = path
+    if isinstance(path, list):
+        img_path_l = []
+        for p in path:
+            img_path_l += _expand_dir_to_images(p)
     else:
-        img_path_l = sorted(glob.glob(os.path.join(path, '*')))
+        img_path_l = _expand_dir_to_images(path)
+
+    if not img_path_l:
+        raise FileNotFoundError(f"No image files found for path: {path}")
 
     img_l = [read_img2(None, v, size) for v in img_path_l]
     # stack to Torch tensor
@@ -169,8 +197,6 @@ def read_img_seq2(path, size=None):
         import ipdb; ipdb.set_trace()
     imgs = torch.from_numpy(np.ascontiguousarray(np.transpose(imgs, (0, 3, 1, 2)))).float()
     return imgs
-
-
 
 
 def index_generation(crt_i, max_n, N, padding='reflection'):
@@ -245,7 +271,6 @@ def augment(img_list, hflip=True, rot=True):
         return img
 
     return [_augment(img) for img in img_list]
-
 
 
 def augment_torch(img_list, hflip=True, rot=True):
@@ -396,4 +421,3 @@ def modcrop(img_in, scale):
     else:
         raise ValueError('Wrong img ndim: [{:d}].'.format(img.ndim))
     return img
-
